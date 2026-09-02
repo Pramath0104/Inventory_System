@@ -58,10 +58,18 @@ async def async_client():
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
+from src.auth.controllers import get_password_hash
+
 @pytest_asyncio.fixture(scope="session")
 async def staff_client(async_client: AsyncClient):
     staff_data = {"name": "Staff User", "email": "staff@inventory.com", "password": "SecretPassword123!", "role": "staff"}
-    await async_client.post("/auth/register", json=staff_data)
+    staff_user = User(
+        name=staff_data["name"],
+        email=staff_data["email"],
+        hashed_password=get_password_hash(staff_data["password"]),
+        role="staff"
+    )
+    await staff_user.insert()
     login_resp = await async_client.post("/auth/login", data={"username": staff_data["email"], "password": staff_data["password"]})
     token = login_resp.json()["access_token"]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as client:
@@ -70,7 +78,13 @@ async def staff_client(async_client: AsyncClient):
 @pytest_asyncio.fixture(scope="session")
 async def admin_client(async_client: AsyncClient):
     admin_data = {"name": "Admin User", "email": "admin@inventory.com", "password": "SecretPassword123!", "role": "admin"}
-    await async_client.post("/auth/register", json=admin_data)
+    admin_user = User(
+        name=admin_data["name"],
+        email=admin_data["email"],
+        hashed_password=get_password_hash(admin_data["password"]),
+        role="admin"
+    )
+    await admin_user.insert()
     login_resp = await async_client.post("/auth/login", data={"username": admin_data["email"], "password": admin_data["password"]})
     token = login_resp.json()["access_token"]
     async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test", headers={"Authorization": f"Bearer {token}"}) as client:
