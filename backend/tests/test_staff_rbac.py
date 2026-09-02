@@ -114,9 +114,9 @@ async def test_order_endpoints(staff_client: AsyncClient):
     resp = await staff_client.get(f"/orders/{test_state['order_id']}")
     assert resp.status_code == 200
 
-    # POST /orders/{id}/cancel (Blocked - Admin only)
+    # POST /orders/{id}/cancel (Allowed for Staff)
     resp = await staff_client.post(f"/orders/{test_state['order_id']}/cancel")
-    assert resp.status_code == 403
+    assert resp.status_code == 200
 
 async def test_inventory_log_endpoints(staff_client: AsyncClient):
     # GET /inventory-log/{product_id} (Blocked - Admin only)

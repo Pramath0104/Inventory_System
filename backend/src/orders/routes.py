@@ -61,7 +61,7 @@ async def get_order(id: PydanticObjectId, current_user: User = Depends(get_curre
             raise HTTPException(status_code=403, detail="Not authorized to view this order")
     return map_to_response(order)
 
-@router.post("/{id}/cancel", response_model=OrderResponse, dependencies=[Depends(require_role([RoleEnum.admin]))])
+@router.post("/{id}/cancel", response_model=OrderResponse, dependencies=[Depends(require_role([RoleEnum.admin, RoleEnum.staff]))])
 async def cancel_order(id: PydanticObjectId):
     order = await controllers.cancel_order(id)
     return map_to_response(order)

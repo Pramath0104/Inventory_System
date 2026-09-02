@@ -90,10 +90,10 @@ inventory-system/
 | **GET** | `/products/{id}` | Get a specific product by ID | Public |
 | **PATCH** | `/products/{id}` | Update product/stock (audits manual stock changes) | Admin, Staff |
 | **DELETE** | `/products/{id}` | Delete a product | Admin |
-| **POST** | `/orders/` | Place an order (Atomic: deducts stock, creates log) | Customer |
+| **POST** | `/orders/` | Place an order (Atomic: deducts stock, creates log) | Admin, Staff, Customer |
 | **GET** | `/orders/` | List orders (Customers see only theirs, Staff/Admin see all) | Admin, Staff, Customer |
 | **GET** | `/orders/{id}` | Get specific order details (restricted to owner or staff/admin) | Admin, Staff, Customer |
-| **POST** | `/orders/{id}/cancel`| Cancel an order (Atomic: updates status, restocks, logs) | Admin |
+| **POST** | `/orders/{id}/cancel`| Cancel an order (Atomic: updates status, restocks, logs) | Admin, Staff |
 | **GET** | `/inventory_log/{id}`| View the immutable stock audit trail for a specific product | Admin |
 
 ---
