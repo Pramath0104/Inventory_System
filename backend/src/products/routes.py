@@ -10,10 +10,13 @@ router = APIRouter()
 
 # DTO mapping function
 def map_to_response(product) -> ProductResponse:
+    # Handle both Link[Category] (has .ref) and raw Category document (has .id directly)
+    cat_id = product.category.ref.id if hasattr(product.category, "ref") else product.category.id
+    
     return ProductResponse(
         id=product.id,
         name=product.name,
-        category_id=product.category.ref.id,
+        category_id=cat_id,
         price=product.price,
         stock_quantity=product.stock_quantity,
         sku=product.sku

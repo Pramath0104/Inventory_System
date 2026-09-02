@@ -11,17 +11,21 @@ router = APIRouter()
 def map_to_response(order) -> OrderResponse:
     items_response = []
     for item in order.items:
+        prod_id = item.product.ref.id if hasattr(item.product, "ref") else item.product.id
         items_response.append(
             OrderItemResponse(
                 id=item.id,
-                product_id=item.product.ref.id,
+                product_id=prod_id,
                 quantity=item.quantity,
                 unit_price=item.unit_price
             )
         )
+        
+    cust_id = order.customer.ref.id if hasattr(order.customer, "ref") else order.customer.id
+    
     return OrderResponse(
         id=order.id,
-        customer_id=order.customer.ref.id,
+        customer_id=cust_id,
         order_date=order.order_date,
         status=order.status,
         total_amount=order.total_amount,

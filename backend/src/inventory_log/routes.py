@@ -9,9 +9,10 @@ from src.auth.models import RoleEnum
 router = APIRouter()
 
 def map_to_response(log) -> InventoryLogResponse:
+    prod_id = log.product.ref.id if hasattr(log.product, "ref") else log.product.id
     return InventoryLogResponse(
         id=log.id,
-        product_id=log.product.ref.id,
+        product_id=prod_id,
         change_qty=log.change_qty,
         reason=log.reason,
         timestamp=log.timestamp

@@ -4,6 +4,7 @@ from fastapi import HTTPException
 from src.products.models import Product
 from src.products.dtos import ProductCreate, ProductUpdate
 from src.categories.models import Category
+from src.inventory_log.models import InventoryLog
 
 async def create_product(product_in: ProductCreate) -> Product:
     category = await Category.get(product_in.category_id)
@@ -23,6 +24,15 @@ async def create_product(product_in: ProductCreate) -> Product:
         sku=product_in.sku
     )
     await product.insert()
+    
+    if product.stock_quantity > 0:
+        log = InventoryLog(
+            product=product,
+            change_qty=product.stock_quantity,
+            reason="Initial Stock on Creation"
+        )
+        await log.insert()
+        
     return product
 
 async def get_products() -> List[Product]:
@@ -36,6 +46,7 @@ async def get_product(product_id: PydanticObjectId) -> Product:
 
 async def update_product(product_id: PydanticObjectId, product_in: ProductUpdate) -> Product:
     product = await get_product(product_id)
+    old_stock = product.stock_quantity
     
     update_data = product_in.model_dump(exclude_unset=True)
     
@@ -50,6 +61,16 @@ async def update_product(product_id: PydanticObjectId, product_in: ProductUpdate
         setattr(product, key, value)
         
     await product.save()
+    
+    if "stock_quantity" in update_data and product.stock_quantity != old_stock:
+        qty_diff = product.stock_quantity - old_stock
+        log = InventoryLog(
+            product=product,
+            change_qty=qty_diff,
+            reason="Manual Stock Adjustment"
+        )
+        await log.insert()
+        
     return product
 
 async def delete_product(product_id: PydanticObjectId):

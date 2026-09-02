@@ -1,0 +1,11 @@
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+pydantic[email]>=2.0.0
+pydantic-settings>=2.0.0
+motor>=3.3.0
+beanie>=1.21.0
+pytest>=7.4.0
+passlib[bcrypt]>=1.7.4
+bcrypt==3.2.2
+python-jose[cryptography]>=3.3.0
+python-multipart>=0.0.6

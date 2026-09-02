@@ -12,86 +12,115 @@ async def place_order(order_in: OrderCreate) -> Order:
     if not customer:
         raise HTTPException(status_code=404, detail="Customer not found")
 
-    total_amount = 0.0
-    order_items_links = []
+    client = Order.get_pymongo_collection().database.client
     
-    # Ideally, this should be a transaction, but Beanie transactions 
-    # require MongoDB replica sets. We'll do it sequentially for this setup.
-    for item_in in order_in.items:
-        product = await Product.get(item_in.product_id)
-        if not product:
-            raise HTTPException(status_code=404, detail=f"Product {item_in.product_id} not found")
-        
-        if product.stock_quantity < item_in.quantity:
-            raise HTTPException(status_code=400, detail=f"Insufficient stock for product {product.name}")
-        
-        # Deduct stock
-        product.stock_quantity -= item_in.quantity
-        await product.save()
-        
-        # Create OrderItem
-        order_item = OrderItem(
-            product=product,
-            quantity=item_in.quantity,
-            unit_price=product.price
-        )
-        await order_item.insert()
-        
-        total_amount += product.price * item_in.quantity
-        order_items_links.append(order_item)
-        
-        # Log inventory change
-        log = InventoryLog(
-            product=product,
-            change_qty=-item_in.quantity,
-            reason="Order Placed"
-        )
-        await log.insert()
-        
-    order = Order(
-        customer=customer,
-        total_amount=total_amount,
-        items=order_items_links,
-        status="completed"
-    )
-    await order.insert()
-    return order
+    async with await client.start_session() as session:
+        async with session.start_transaction():
+            total_amount = 0.0
+            order_items_links = []
+            
+            # Aggregate required quantities in case the same item is passed multiple times
+            required_qty = {}
+            for item_in in order_in.items:
+                pid = str(item_in.product_id)
+                required_qty[pid] = required_qty.get(pid, 0) + item_in.quantity
+            
+            for pid, qty in required_qty.items():
+                product = await Product.get(PydanticObjectId(pid), session=session)
+                if not product:
+                    raise HTTPException(status_code=404, detail=f"Product {pid} not found")
+                
+                if product.stock_quantity < qty:
+                    raise HTTPException(status_code=400, detail=f"Insufficient stock for product {product.name}")
+                
+                # Deduct stock
+                product.stock_quantity -= qty
+                await product.save(session=session)
+                
+                # Create OrderItem
+                order_item = OrderItem(
+                    product=product,
+                    quantity=qty,
+                    unit_price=product.price
+                )
+                await order_item.insert(session=session)
+                
+                total_amount += product.price * qty
+                order_items_links.append(order_item)
+                
+                # Log inventory change
+                log = InventoryLog(
+                    product=product,
+                    change_qty=-qty,
+                    reason="Order Placed"
+                )
+                await log.insert(session=session)
+                
+            order = Order(
+                customer=customer,
+                total_amount=total_amount,
+                items=order_items_links,
+                status="completed"
+            )
+            await order.insert(session=session)
+            return order
 
 async def get_orders(customer_id: PydanticObjectId | None = None) -> List[Order]:
     if customer_id:
-        # We find orders linked to this customer
-        orders = await Order.find(Order.customer.id == customer_id, fetch_links=True).to_list()
+        orders = await Order.find(Order.customer.id == customer_id).to_list()
     else:
-        orders = await Order.find_all(fetch_links=True).to_list()
+        orders = await Order.find_all().to_list()
+        
+    for order in orders:
+        item_ids = [i.ref.id if hasattr(i, "ref") else i.id for i in order.items]
+        if item_ids:
+            order.items = await OrderItem.find({"_id": {"$in": item_ids}}).to_list()
     return orders
 
 async def get_order(order_id: PydanticObjectId) -> Order:
-    # Need to fetch links
-    order = await Order.get(order_id, fetch_links=True)
+    order = await Order.get(order_id)
     if not order:
         raise HTTPException(status_code=404, detail="Order not found")
+    
+    item_ids = [i.ref.id if hasattr(i, "ref") else i.id for i in order.items]
+    if item_ids:
+        order.items = await OrderItem.find({"_id": {"$in": item_ids}}).to_list()
     return order
 
 async def cancel_order(order_id: PydanticObjectId) -> Order:
-    order = await get_order(order_id)
-    if order.status == "cancelled":
-        raise HTTPException(status_code=400, detail="Order is already cancelled")
+    client = Order.get_pymongo_collection().database.client
     
-    # Restore stock
-    for item in order.items:
-        product = await Product.get(item.ref.id)
-        if product:
-            product.stock_quantity += item.quantity
-            await product.save()
+    async with await client.start_session() as session:
+        async with session.start_transaction():
+            order = await Order.get(order_id, session=session)
+            if not order:
+                raise HTTPException(status_code=404, detail="Order not found")
+                
+            if order.status == "cancelled":
+                raise HTTPException(status_code=400, detail="Order is already cancelled")
             
-            # Log inventory change
-            log = InventoryLog(
-                product=product,
-                change_qty=item.quantity,
-                reason="Order Cancelled"
-            )
-            await log.insert()
+            # Manually fetch items to bypass fetch_links=True bug
+            item_ids = [i.ref.id if hasattr(i, "ref") else i.id for i in order.items]
+            if item_ids:
+                order.items = await OrderItem.find({"_id": {"$in": item_ids}}, session=session).to_list()
             
-    order.status = "cancelled"
-    await order.save()
-    return order
+            # Restore stock
+            for item in order.items:
+                # item.product is a Link[Product], so we access .ref.id or .id
+                prod_id = item.product.ref.id if hasattr(item.product, "ref") else item.product.id
+                product = await Product.get(prod_id, session=session)
+                if product:
+                    product.stock_quantity += item.quantity
+                    await product.save(session=session)
+                    
+                    # Log inventory change
+                    log = InventoryLog(
+                        product=product,
+                        change_qty=item.quantity,
+                        reason="Order Cancelled"
+                    )
+                    await log.insert(session=session)
+                    
+            order.status = "cancelled"
+            await order.save(session=session)
+            return order

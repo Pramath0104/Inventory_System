@@ -29,3 +29,5 @@ async def init_db():
             User
         ]
     )
+    print("✅ Successfully connected to MongoDB database!")
+
