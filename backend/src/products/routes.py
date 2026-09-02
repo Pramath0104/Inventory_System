@@ -28,8 +28,12 @@ async def create_product(product_in: ProductCreate):
     return map_to_response(product)
 
 @router.get("/", response_model=List[ProductResponse])
-async def list_products():
-    products = await controllers.get_products()
+async def list_products(
+    search: str | None = Query(None, description="Search products by name (case-insensitive partial match)"),
+    category: PydanticObjectId | None = Query(None, description="Filter products by category ID"),
+    sort: str | None = Query(None, description="Sort by price: 'asc' or 'desc'")
+):
+    products = await controllers.get_products(search=search, category_id=category, sort=sort)
     return [map_to_response(p) for p in products]
 
 @router.get("/low-stock", response_model=List[ProductResponse], dependencies=[Depends(require_role([RoleEnum.admin]))])

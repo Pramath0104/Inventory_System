@@ -35,8 +35,25 @@ async def create_product(product_in: ProductCreate) -> Product:
         
     return product
 
-async def get_products() -> List[Product]:
-    return await Product.find_all().to_list()
+async def get_products(
+    search: str | None = None, 
+    category_id: PydanticObjectId | None = None, 
+    sort: str | None = None
+) -> List[Product]:
+    query = []
+    if search:
+        query.append({"name": {"$regex": search, "$options": "i"}})
+    if category_id:
+        query.append(Product.category.id == category_id)
+        
+    cursor = Product.find(*query) if query else Product.find_all()
+    
+    if sort == "asc":
+        cursor = cursor.sort("+price")
+    elif sort == "desc":
+        cursor = cursor.sort("-price")
+        
+    return await cursor.to_list()
 
 async def get_product(product_id: PydanticObjectId) -> Product:
     product = await Product.get(product_id)
